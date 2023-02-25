@@ -41,6 +41,8 @@ export function useGamepad(
     const onConnect = useCallback((event: GamepadEvent) => {
         didConnect(event.gamepad);
 
+        console.log("ONConnect");
+
         // Schedule an animation frame if there is not already one pending
         if (animationRequestId.current === 0) {
             animationRequestId.current =
@@ -55,9 +57,11 @@ export function useGamepad(
     // Register event listeners for gamepad connection and disconnection, and
     // unregister them when the component unmounts.
     useEffect(() => {
+        console.log("Adding event listener");
         window.addEventListener("gamepadconnected", onConnect);
         window.addEventListener("gamepaddisconnected", onDisconnect);
         return () => {
+            console.log("Removing event listener");
             window.removeEventListener("gamepadconnected", onConnect);
             window.removeEventListener("gamepaddisconnected", onDisconnect);
         };

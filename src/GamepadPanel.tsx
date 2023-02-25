@@ -1,5 +1,5 @@
 import { fromDate } from "@foxglove/rostime";
-import { PanelExtensionContext, RenderState, Topic, MessageEvent } from "@foxglove/studio";
+import { PanelExtensionContext, RenderState, Topic, MessageEvent, SettingsTreeNode, SettingsTreeNodes, SettingsTreeFields, SettingsTreeAction } from "@foxglove/studio";
 import { produce } from "immer";
 import { get, isEqual, set } from "lodash";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
@@ -19,11 +19,11 @@ import { ScaleToFit } from "./components/ScaleToFit";
 
 // FIXME Use the public extension API when available
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type EXPERIMENTAL_PanelExtensionContextWithSettings = any;
-type SettingsTreeAction = any;
-type SettingsTreeFields = any;
-type SettingsTreeNode = any;
-type SettingsTreeRoots = any;
+// type EXPERIMENTAL_PanelExtensionContextWithSettings = any;
+// type SettingsTreeAction = any;
+// type SettingsTreeFields = any;
+// type SettingsTreeNode = any;
+// type SettingsTreeRoots = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 
@@ -35,6 +35,7 @@ type PanelProps = {
 
 type Config = {
     topic: string;
+    publish_mode: boolean;
     theme: string;
     // TODO: Separate theme and style using OJD nomenclature
     mapping_name: string;
@@ -129,23 +130,28 @@ function getNextAxisIndex(config: Config): number {
 
 function buildSettingsTree(
     config: Config,
-    readonly: boolean,
+    isReadOnly: boolean,
     topics?: readonly Topic[],
-): SettingsTreeRoots {
+): SettingsTreeNodes {
     const generalFields: SettingsTreeFields = {
         topic: {
             label: "Topic",
-            input: (readonly ? "select" : "string"),
+            input: (isReadOnly ? "select" : "string"),
             value: config.topic,
-            options: (!readonly ? null :
-                (topics ?? [])
-                    .filter((topic) => (topic.datatype === "sensor_msgs/Joy"))
-                    .map((topic) => ({
-                        label: topic.name,
-                        value: topic.name,
-                    }))
-            ),
-            error: (!config.topic ? "Topic name is empty" : null),
+            options: (topics ?? [])
+            .filter((topic) => (topic.datatype === "sensor_msgs/Joy"))
+            .map((topic) =>({
+                label: topic.name,
+                value: topic.name,
+            })),
+            // error: (!config.topic ? "Topic name is empty" : null),
+
+        },
+
+        publish_mode: {
+            label: "Publish Mode",
+            input: "boolean",
+            value: config.publish_mode,
         },
 
         theme: {
@@ -159,6 +165,7 @@ function buildSettingsTree(
                 },
             ],
         },
+
 
         mapping: {
             label: "Mapping",
@@ -179,7 +186,7 @@ function buildSettingsTree(
 
     const buttonIndexConflicts = getButtonIndexConflicts(config);
     const buttonNameConflicts = getButtonNameConflicts(config);
-    const buttonNodes: SettingsTreeNode = {};
+    const buttonNodes: SettingsTreeNodes = {};
     config.mapping.buttons.forEach((button, i) => {
         buttonNodes[i] = {
             label: `Button ${button.name}`,
@@ -188,6 +195,7 @@ function buildSettingsTree(
             ),
             actions: [
                 {
+                    type: "action",
                     id: "delete_mapping",
                     label: "Delete Button",
                 },
@@ -197,12 +205,12 @@ function buildSettingsTree(
                     label: "Name",
                     input: "string",
                     value: button.name,
-                    error: (
-                        button.name.length === 0 ?
-                        "Button name is empty" :
-                        buttonNameConflicts.includes(button.name) ?
-                        "Name is used multiple times" : null
-                    )
+                    // error: (
+                    //     button.name.length === 0 ?
+                    //     "Button name is empty" :
+                    //     buttonNameConflicts.includes(button.name) ?
+                    //     "Name is used multiple times" : null
+                    // )
                 },
                 index: {
                     label: "Index",
@@ -210,17 +218,17 @@ function buildSettingsTree(
                     min: 0,
                     step: 1,
                     value: button.index,
-                    error: (
-                        buttonIndexConflicts.includes(button.index) ?
-                        "Index is used multiple times" : null
-                    ),
+                    // error: (
+                    //     buttonIndexConflicts.includes(button.index) ?
+                    //     "Index is used multiple times" : null
+                    // ),
                 },
             },
         };
     });
 
     const axisConflicts = getAxisConflicts(config);
-    const directionalNodes: SettingsTreeNode = {};
+    const directionalNodes: SettingsTreeNodes = {};
     config.mapping.directionals.forEach((directional, i) => {
         directionalNodes[i] = {
             label: `Directional ${i+1}`,
@@ -229,6 +237,7 @@ function buildSettingsTree(
             ),
             actions: [
                 {
+                    type: "action",
                     id: "delete_mapping",
                     label: "Delete Directional",
                 },
@@ -240,10 +249,10 @@ function buildSettingsTree(
                     min: 0,
                     step: 1,
                     value: directional.x,
-                    error: (
-                        axisConflicts.includes(directional.x) ?
-                        "Index is used multiple times" : null
-                    ),
+                    // error: (
+                    //     axisConflicts.includes(directional.x) ?
+                    //     "Index is used multiple times" : null
+                    // ),
                 },
                 y: {
                     label: "Y-Axis",
@@ -251,10 +260,10 @@ function buildSettingsTree(
                     min: 0,
                     step: 1,
                     value: directional.y,
-                    error: (
-                        axisConflicts.includes(directional.y) ?
-                        "Index is used multiple times" : null
-                    ),
+                    // error: (
+                    //     axisConflicts.includes(directional.y) ?
+                    //     "Index is used multiple times" : null
+                    // ),
                 },
                 deadzone: {
                     label: "Deadzone",
@@ -269,7 +278,7 @@ function buildSettingsTree(
         };
     });
 
-    const settings: SettingsTreeRoots = {
+    const settings: SettingsTreeNodes = {
         general: {
             label: "General",
             fields: generalFields,
@@ -280,6 +289,7 @@ function buildSettingsTree(
             defaultExpansionState: "collapsed",
             actions: [
                 {
+                    type: "action",
                     id: "add_button",
                     label: "Add Button",
                 },
@@ -292,6 +302,7 @@ function buildSettingsTree(
             defaultExpansionState: "collapsed",
             actions: [
                 {
+                    type: "action",
                     id: "add_directional",
                     label: "Add Directional",
                 },
@@ -317,6 +328,7 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
     const [config, setConfig] = useState<Config>(() => {
         const config = context.initialState as Partial<Config>;
         config.topic ??= "/joy";
+        config.publish_mode ??= false;
         config.theme ??= "ps3-analog-black";
         config.mapping_name ??= "Sony PlayStation 3";
         config.mapping ??= loadOJDMapping(config.mapping_name);
@@ -324,7 +336,8 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
     });
 
     // Determine if we are attached to a player on which we can publish events
-    const isReadonly = ("publish" in context);
+    // const isReadonly = ("publish" in context);
+    const isReadonly = false;
 
     // Persist the config each time it is modified
     useEffect(() => {
@@ -384,11 +397,18 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
         if (action.action === "update") {
             const { path, value } = action.payload;
 
-            if (path[0] === "general" && ["topic", "theme"].includes(path[1])) {
+            if (path[0] === "general" && ["topic", "theme"].includes(path[1] as string)) {
                 setConfig((oldConfig) => produce(oldConfig, (draft) => {
                     set(draft, path.slice(1), value);
                 }));
             }
+
+            if (path[0] === "general" && ["publish_mode"].includes(path[1] as string)) {
+                setConfig((oldConfig) => produce(oldConfig, (draft) => {
+                    set(draft, path.slice(1), value);
+                }));
+            }
+
 
             if (isEqual(path, ["general", "mapping"])) {
                 if (value === "custom") {
@@ -401,13 +421,13 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
                     }));
                 } else {
                     setConfig((oldConfig) => produce(oldConfig, (draft) => {
-                        draft.mapping_name = value;
-                        draft.mapping = loadOJDMapping(value);
+                        draft.mapping_name = value as string;
+                        draft.mapping = loadOJDMapping(value as string);
                     }));
                 }
             }
 
-            if (["buttons", "directionals"].includes(path[0])) {
+            if (["buttons", "directionals"].includes(path[0] as string)) {
                 setConfig((oldConfig) => produce(oldConfig, (draft) => {
                     set(draft.mapping, path, value);
                     draft.mapping_name = "custom";
@@ -420,11 +440,9 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
 
     // Register the settings tree
     useEffect(() => {
-        (
-          context as unknown as EXPERIMENTAL_PanelExtensionContextWithSettings
-        ).__updatePanelSettingsTree({
+          context.updatePanelSettingsEditor({
           actionHandler: settingsActionHandler,
-          roots: buildSettingsTree(config, isReadonly, topics),
+          nodes: buildSettingsTree(config, isReadonly, topics),
         });
       }, [config, context, isReadonly, settingsActionHandler, topics]);
 
@@ -438,6 +456,7 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
         //
         // The render handler could be invoked as often as 60hz during playback if fields are changing often.
         context.onRender = (renderState: RenderState, done) => {
+            console.log("zzzzzza");
             // render functions receive a _done_ callback. You MUST call this callback to indicate your panel has finished rendering.
             // Your panel will not receive another render callback until _done_ is called from a prior render. If your panel is not done
             // rendering before the next render call, studio shows a notification to the user that your panel is delayed.
@@ -466,25 +485,32 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
 
     // Advertise the relevant topic when in a live session
     useEffect(() => {
-        if (!isReadonly) {
+        console.log("do a thinkg");
+        if (config.publish_mode) {
+            if (isReadonly)
+            {
+                // TODO: Failure here or better capture elsewhere?
+                console.log("Should not attempt to publish when read only");
+            }
+            
             setUsedTopic((oldTopic) => {
                 if (oldTopic)
                     context.unadvertise?.(oldTopic);
-                context.advertise?.(config.topic, "sensor_msgs/Joy");
+                context.advertise?.("/joy", "sensor_msgs/Joy");
                 return config.topic;
             });
         }
-    }, [config.topic, context, isReadonly]);
+    }, [config.topic, config.publish_mode, context, isReadonly]);
 
     // Or subscribe to the relevant topic when in a recorded session
     useEffect(() => {
-        if (isReadonly) {
+        if (!config.publish_mode) {
             setUsedTopic((_oldTopic) => {
                 context.subscribe([ config.topic ]);
                 return config.topic;
             });
         }
-    }, [config.topic, context, isReadonly]);
+    }, [config.topic, config.publish_mode, context, isReadonly]);
 
     // If subscribing
     useEffect(() => {
@@ -510,8 +536,12 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
         }, [gamepad]),
 
         didUpdate: useCallback((gp: Gamepad) => {
-            if (isReadonly || gamepad !== gp.index)
+            // if (isReadonly || gamepad !== gp.index)
+            //     return;
+            if (!config.publish_mode)
+            {
                 return;
+            }
 
             setJoy((prev) => ({
                 header: {
@@ -524,7 +554,20 @@ function GamepadPanel({ context }: PanelProps): JSX.Element {
                     (button) => (button.pressed ? 1 : 0)
                 ),
             }));
-        }, [gamepad, isReadonly]),
+
+            var tmpjoy = {
+                header: {
+                    frame_id: '',
+                    stamp: fromDate(new Date()),  // TODO: /clock // TODO: Can leave off as it's added automatically?
+                },
+                axes: [...gp.axes],
+                buttons: gp.buttons.map(
+                    (button) => (button.pressed ? 1 : 0)
+                ),
+            };
+            // console.log(tmpjoy);
+            context.publish?.("/joy", tmpjoy);
+        }, [gamepad, isReadonly, config.publish_mode]),
     });
 
     // Invoke the done callback once the render is complete
